@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>砕音 KUDAKE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* レイアウト: 上に波形モニター、下に3枚の斜めパネル（時間／変化／空間）を並べた楽器型UI */
+:root{
+  --bg:#1c2422;          /* 苔むしたグラファイト */
+  --panel:#2a3330;
+  --panel-edge:#36413d;
+  --bone:#e8e4da;        /* ノブの弧・主要文字 */
+  --mute:#8d9893;        /* 補助文字 */
+  --ember:#e0a458;       /* 動作中・アクセント */
+  --rose:#c96f7c;        /* 録音・欠落 */
+  --sea:#7fb8b0;         /* 停滞 */
+  --f-disp:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;min-height:100%}
+body{background:radial-gradient(120% 80% at 50% 0%,#26302d 0%,var(--bg) 60%);color:var(--bone);font-family:var(--f-disp);font-size:14px;
+  padding-block:24px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:14px}
+.brand h1{margin:0;font-size:40px;font-weight:700;letter-spacing:.04em;line-height:1}
+.brand span{font-family:var(--f-mono);font-size:12px;color:var(--mute);letter-spacing:.2em;text-transform:uppercase}
+.transport{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button,select,input[type=number]{font:inherit;color:var(--bone);background:var(--panel);border:1px solid var(--panel-edge);border-radius:999px;padding:8px 16px;cursor:pointer}
+button:hover,select:hover{border-color:var(--mute)}
+button:focus-visible,select:focus-visible,input:focus-visible,.knob:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
+button.on{background:var(--ember);color:#1c2422;border-color:var(--ember)}
+button.rec.on{background:var(--rose);border-color:var(--rose);color:#1c2422}
+button#start{background:var(--bone);color:#1c2422;border-color:var(--bone);font-weight:700}
+button#start.running{background:transparent;color:var(--bone)}
+.bpm{display:flex;align-items:center;gap:6px;font-family:var(--f-mono);font-size:12px;color:var(--mute)}
+.bpm input{width:72px;border-radius:8px;padding:7px 8px;text-align:right;font-family:var(--f-mono)}
+
+.sync{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;background:var(--panel);border:1px solid var(--panel-edge);border-radius:6px;font-size:13px}
+.sync select{padding:6px 12px}
+.lamp{width:12px;height:12px;border-radius:50%;background:#3e4945;transition:background .05s}
+.lamp.hit{background:var(--ember)}.lamp.bar{background:var(--rose)}
+button.lang{font-family:var(--f-mono);font-size:12px;letter-spacing:.08em;padding:8px 12px}
+.chk{display:flex;align-items:center;gap:6px;color:var(--mute);font-size:12px}
+.syncInfo{font-family:var(--f-mono);font-size:11px;color:var(--mute);margin-left:auto;font-variant-numeric:tabular-nums}
+.screen{background:#141a18;border:1px solid var(--panel-edge);border-radius:6px;overflow:hidden;position:relative}
+.screen canvas{display:block;width:100%;height:150px}
+.status{position:absolute;left:12px;top:10px;font-family:var(--f-mono);font-size:11px;color:var(--mute);letter-spacing:.08em}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--f-mono);font-size:11px;color:var(--mute)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+
+.rack{display:grid;grid-template-columns:1fr 1.6fr 1.9fr;gap:14px}
+@media (max-width:820px){.rack{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--panel-edge);padding:18px 16px 20px;clip-path:polygon(0 3%,100% 0,97% 100%,3% 97%);min-width:0}
+.panel:nth-child(2){clip-path:polygon(2% 0,100% 4%,98% 96%,0 100%)}
+.panel:nth-child(3){clip-path:polygon(0 0,98% 3%,100% 100%,3% 97%)}
+.panel h2{margin:0 0 14px;font-size:12px;font-weight:500;color:var(--mute);letter-spacing:.3em}
+.knobs{display:flex;flex-wrap:wrap;gap:16px 10px;justify-content:space-around}
+.knob{display:flex;flex-direction:column;align-items:center;gap:4px;width:92px;user-select:none;touch-action:none;cursor:ns-resize;border-radius:8px}
+.knob svg{width:84px;height:84px;overflow:visible}
+.knob.big svg{width:112px;height:112px}
+.knob.big{width:124px}
+.knob .lbl{font-size:13px;font-weight:500}
+.knob .val{font-family:var(--f-mono);font-size:11px;color:var(--mute);font-variant-numeric:tabular-nums}
+.knob .track{fill:none;stroke:#3e4945;stroke-width:6;stroke-linecap:round}
+.knob .arc{fill:none;stroke:var(--bone);stroke-width:6;stroke-linecap:round}
+.knob .face{fill:#252d2a;stroke:#46524d;stroke-width:1}
+.knob .tick{stroke:var(--bone);stroke-width:2.5;stroke-linecap:round}
+
+.foot{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--mute);line-height:1.7}
+.foot p{margin:0;max-width:62ch}
+#hint{font-family:var(--f-mono);font-size:11px;min-height:1.7em}
+a.dl{color:var(--ember)}
+.err{color:var(--rose)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><h1>砕音</h1><span>kudake · collapse / compose</span></div>
+    <div class="transport">
+      <button id="start" type="button">マイクで開始</button>
+      <select id="inDev" data-i18n-aria="inDevice" data-i18n-title="inDevice"><option value="" data-i18n="inDefault">入力: 既定のマイク</option></select>
+      <button id="fileBtn" type="button" data-i18n="fileIn" data-i18n-title="fileInTip">ファイル入力</button>
+      <input id="file" type="file" accept="audio/*" hidden>
+      <button id="freeze" type="button" data-i18n="freeze" data-i18n-title="freezeTip">凍結</button>
+      <button id="dice" type="button" data-i18n="dice" data-i18n-title="diceTip">ランダム</button>
+      <select id="preset" data-i18n-aria="preset"></select>
+      <label class="bpm" for="bpm">BPM <input id="bpm" type="number" min="40" max="220" step="1" value="90"></label>
+      <button id="rec" class="rec" type="button">録音</button>
+      <button id="lang" type="button" class="lang" aria-label="Language / 言語">EN</button>
+    </div>
+  </header>
+
+  <div class="sync">
+    <span class="lamp" id="lamp" aria-hidden="true"></span>
+    <label for="syncMode" data-i18n="sync">同期</label>
+    <select id="syncMode"><option value="int" data-i18n="syncInt">内部テンポ</option><option value="midi" data-i18n="syncMidi">MIDIクロック（Ableton Live）</option></select>
+    <select id="midiIn" data-i18n-aria="midiPort" hidden></select>
+    <label class="bpm" for="offset" id="offWrap" hidden><span data-i18n="offset">ずれ補正</span> <input id="offset" type="number" min="-80" max="80" step="1" value="0"> ms</label>
+    <label class="chk" id="followWrap" hidden><input id="follow" type="checkbox" checked> <span data-i18n="follow">Liveの停止で無音</span></label>
+    <span class="syncInfo" id="syncInfo"></span>
+  </div>
+
+  <div class="screen">
+    <canvas id="scope" width="2080" height="300"></canvas>
+    <div class="status" id="status"></div>
+  </div>
+  <div class="legend">
+    <span><i style="background:var(--bone)"></i><span data-i18n="lgN">通常の切片</span></span>
+    <span><i style="background:var(--sea)"></i><span data-i18n="lgS">停滞（同じ箇所を繰り返す）</span></span>
+    <span><i style="background:var(--ember)"></i><span data-i18n="lgD">撹乱（過去へ跳ぶ・逆再生）</span></span>
+    <span><i style="background:var(--rose)"></i><span data-i18n="lgA">欠落（無音）</span></span>
+    <span><i style="background:#b6a4ec"></i><span data-i18n="lgB">ピッ（電子音）</span></span>
+  </div>
+
+  <div class="rack">
+    <section class="panel"><h2 data-i18n="pTime">時間</h2><div class="knobs" id="g1"></div></section>
+    <section class="panel"><h2 data-i18n="pChange">変化</h2><div class="knobs" id="g2"></div></section>
+    <section class="panel"><h2 data-i18n="pSpace">空間</h2><div class="knobs" id="g3"></div></section>
+  </div>
+
+  <div class="foot">
+    <p id="hint"></p>
+    <p id="dl"></p>
+  </div>
+</div>
+
+<script>
+/* ---------- オーディオワークレット（切片エンジン） ---------- */
+const WORKLET = `
+class Kudake extends AudioWorkletProcessor{
+  constructor(){
+    super();
+    this.size = Math.floor(sampleRate*12);
+    this.buf = new Float32Array(this.size);
+    this.w = 0; this.filled = 0;
+    this.p = {length:.5,stuck:.1,disorder:.3,repeat:.2,rate:.5,absence:.1,smooth:.1,lean:.3,bpm:90,freeze:0,beep:0,pitch:.7};
+    this.bLen=0; this.bStart=0; this.bPh=0; this.bGain=1; this.bDC=0; this.bSine=0; this.bHz=0;
+    this.subLeft = 0; this.subLen = 1; this.subsLeft = 0;
+    this.pos = 0; this.segStart = 0; this.r = 1; this.silent = false;
+    this.prevStart = null; this.pan = 0; this.fadeN = 64;
+    this.t = 0; this.anchor = 0; this.g = 1; this.mute = 0;
+    this.port.onmessage = e => {
+      const d = e.data;
+      if (d.beat) this.onBeat(d.late||0);
+      else if (d.reset) { this.anchor = this.t - (d.late||0); this.cut(); }
+      else Object.assign(this.p, d);
+    };
+  }
+  beatLen(){ return 60/this.p.bpm*sampleRate; }
+  cut(){ this.subsLeft = 0; this.subLeft = Math.min(this.subLeft, Math.floor(this.fadeN)); }
+  onBeat(late){
+    const B=this.beatLen(), na=this.t-late;
+    let drift=((na-this.anchor)%B+B)%B; if(drift>B/2) drift-=B;
+    this.anchor=na;
+    if(Math.abs(drift)>sampleRate*0.004) this.cut();
+  }
+  read(x){
+    const s=this.size; x=((x%s)+s)%s;
+    const i=Math.floor(x), f=x-i;
+    return this.buf[i]*(1-f) + this.buf[(i+1)%s]*f;
+  }
+  newSeg(){
+    const p=this.p, sr=sampleRate, R=Math.random;
+    const beat = 60/p.bpm*sr;
+    const divs=[1/16,1/12,1/8,1/6,3/16,1/4,1/3,3/8,1/2,3/4,1,1.5,2,3,4];
+    const base = Math.round(p.length*(divs.length-1));
+    let idx = base;
+    if(R()<p.disorder*.6) idx = Math.max(0,Math.min(divs.length-1, idx + Math.round((R()*2-1)*3)));
+    // 切片の終わりを拍のグリッドに吸着させる（Liveと位相を揃える）
+    const desired = beat*divs[idx];
+    const gq = Math.min(beat*divs[base], beat);
+    let end = this.anchor + Math.ceil((this.t + desired*0.5 - this.anchor)/gq)*gq;
+    if(end - this.t < 64) end += gq;
+    let segLen = Math.max(64, Math.floor(end - this.t));
+    const avail = Math.min(this.filled, this.size-1);
+    segLen = Math.min(segLen, Math.max(64, avail-64));
+
+    const oct = (p.rate-.5)*2;          // -1..+1 オクターブ
+    let rate = Math.pow(2, oct);
+    let kind = 'n';
+    if(R()<p.disorder*.35){ rate *= [0.5,2,1,0.75][Math.floor(R()*4)]; kind='d'; }
+    const rev = R()<p.disorder*.3;
+    if(rev){ kind='d'; }
+
+    this.silent = R()<p.absence;
+    let start;
+    const need = segLen*rate + 128;
+    if(this.prevStart!==null && R()<p.stuck){ start=this.prevStart; kind='s'; }
+    else if(R()<p.disorder && avail>need*2){
+      start = this.w - need - R()*(avail-need*2); kind='d';
+    } else {
+      start = rev ? this.w - 128 : this.w - need;
+    }
+    if(this.silent) kind='a';
+    this.r = rev ? -rate : rate;
+
+    // ピッ: ごく短い切片を音の速さで繰り返し、音程のある電子音にする
+    this.bLen = 0;
+    if(!this.silent && R()<p.beep){
+      const hz0 = 600*Math.pow(10, p.pitch);            // 600〜6000 Hz
+      const hz = R()<0.3 ? hz0*0.373 : hz0;              // ときどき低い方の音（動画の1.7kHz相当）
+      this.bHz = hz; this.bLen = sr/hz;
+      this.bStart = this.w - Math.ceil(this.bLen) - 4 - Math.floor(R()*Math.min(avail-64, sr*0.5));
+      let m=0, pk=0; const N=Math.ceil(this.bLen);
+      for(let j=0;j<N;j++) m+=this.read(this.bStart+j); m/=N;
+      for(let j=0;j<N;j++) pk=Math.max(pk,Math.abs(this.read(this.bStart+j)-m));
+      this.bDC=m;
+      if(pk<0.003){ this.bSine=1; this.bGain=0.35; } else { this.bSine=0; this.bGain=Math.min(0.4/pk,80); }
+      this.bPh=0; kind='b';
+    }
+
+    let n=1;
+    if(R()<p.repeat){ const opts=[2,3,4,6,8]; n = opts[Math.floor(R()*Math.min(opts.length, 1+p.repeat*opts.length))]; }
+    this.subLen = Math.max(32, Math.floor(segLen/n));
+    this.subsLeft = n-1;
+    this.segStart = start; this.pos = start; this.subLeft = this.subLen;
+    this.pan = (R()*2-1)*p.lean;
+    this.prevStart = start;
+    this.fadeN = Math.max(16, Math.min(this.subLen/2, sr*(0.002 + p.smooth*0.06)));
+    this.port.postMessage({kind, len:segLen/sr, n, rev, w:this.w, start, hz:this.bLen?Math.round(this.bHz):0});
+  }
+  nextSub(){
+    if(this.subsLeft>0){ this.subsLeft--; this.pos=this.segStart; this.subLeft=this.subLen; }
+    else this.newSeg();
+  }
+  process(inputs, outputs){
+    const inp0 = inputs[0] && inputs[0][0], inp1 = inputs[0] && inputs[0][1];
+    const inp = inp0 && inp1 ? inp0.map((v,i)=>(v+inp1[i])*0.5) : inp0;
+    const out = outputs[0], L=out[0], Rr=out[1]||out[0];
+    const frz = this.p.freeze;
+    for(let i=0;i<L.length;i++){
+      if(!frz){
+        this.buf[this.w] = inp ? inp[i] : 0;
+        this.w = (this.w+1)%this.size;
+        if(this.filled<this.size) this.filled++;
+      }
+      if(this.subLeft<=0) this.nextSub();
+      let y=0;
+      if(!this.silent && this.filled>256){
+        const t=this.subLen-this.subLeft;
+        const env=Math.min(1, t/this.fadeN, this.subLeft/this.fadeN);
+        if(this.bLen){
+          const ph=this.bPh%this.bLen;
+          const v=this.bSine ? Math.sin(2*Math.PI*ph/this.bLen) : (this.read(this.bStart+ph)-this.bDC);
+          y=v*this.bGain*env; this.bPh++;
+        } else y=this.read(this.pos)*env;
+      }
+      this.pos += this.r; this.subLeft--; this.t++;
+      this.g += ((this.p.mute?0:1) - this.g)*0.0015; y*=this.g;
+      const a=(this.pan+1)*Math.PI/4;
+      L[i]=y*Math.cos(a)*1.41; if(Rr!==L) Rr[i]=y*Math.sin(a)*1.41;
+    }
+    return true;
+  }
+}
+registerProcessor('kudake', Kudake);
+`;
+
+
+/* ---------- 言語（日本語 / English） ---------- */
+const I18N = {
+  ja:{
+    start:'マイクで開始', pause:'一時停止', resume:'再開',
+    inDevice:'入力デバイス', inDefault:'入力: 既定のマイク', inPrefix:'入力: ', unknownDev:'名称不明のデバイス',
+    fileIn:'ファイル入力', fileInTip:'マイクの代わりに音声ファイルを入力にする',
+    freeze:'凍結', freezeTip:'バッファへの書き込みを止め、今ある音だけで刻み続ける',
+    dice:'ランダム', diceTip:'全パラメーターをランダムに', preset:'プリセット',
+    rec:'録音', recStop:'録音停止', recDone:'録音完了: ', save:' を保存', needStart:'先に「マイクで開始」を押してください。',
+    sync:'同期', syncInt:'内部テンポ', syncMidi:'MIDIクロック（Ableton Live）', midiPort:'MIDI入力ポート',
+    offset:'ずれ補正', follow:'Liveの停止で無音',
+    intRun:'内部テンポで動作中', pickPort:'MIDI入力ポートを選んでください', waitClock:'クロック待ち',
+    noMidiIn:'MIDI入力が見つかりません', noWebMidi:'このブラウザはWeb MIDI非対応です。Chromeで開いてください。', midiDenied:'MIDIの使用が許可されませんでした',
+    idle:'停止中 · ヘッドフォン推奨（スピーカーだとハウリングします）', paused:'一時停止中',
+    inputOn:'入力中: ', mic:'マイク', fileOn:'ファイル入力中 · ',
+    errOpen:'入力を開けませんでした: ', errOpenHint:'（Chromeで開き、マイクの使用を許可してください）', errThis:'この入力を開けませんでした: ',
+    lgN:'通常の切片', lgS:'停滞（同じ箇所を繰り返す）', lgD:'撹乱（過去へ跳ぶ・逆再生）', lgA:'欠落（無音）', lgB:'ピッ（電子音）',
+    pTime:'時間', pChange:'変化', pSpace:'空間',
+    hint:'ノブは上下ドラッグ（Shiftで微調整）、ダブルクリックで初期値。',
+    beat:'拍', beats:'拍', bar:'1小節',
+    k:{length:'長さ',stuck:'停滞',disorder:'撹乱',repeat:'反復',rate:'速度',absence:'欠落',beep:'ピッ',pitch:'高さ',mirage:'残響',smooth:'平滑',lean:'揺れ',tone:'音色',monitor:'原音',out:'出力'},
+    h:{
+      length:'長さ: 1つの切片の長さ（BPM基準）。短いほど細かく砕ける。',
+      stuck:'停滞: 直前の切片と同じ箇所に引っかかる確率。',
+      disorder:'撹乱: 過去の任意の位置へ跳ぶ・逆再生・速度変化が起きる確率。',
+      repeat:'反復: 切片を2〜8分割して連打（ラチェット）する確率と細かさ。',
+      rate:'速度: 再生速度とピッチ（±1オクターブ）。中央で原速。',
+      absence:'欠落: 切片が無音になる確率。リズムに隙間ができる。',
+      beep:'ピッ: ごく短い瞬間を高速で繰り返して、音程のある電子音に変える確率。',
+      pitch:'高さ: ピッの音程。ときどき約1/3の低い音も混ざる。',
+      mirage:'残響: 刻んだ音を霧のような長い残響に溶かす量。',
+      smooth:'平滑: 切片の頭と尻のフェード。上げると角が取れ、下げるとクリック感が出る。',
+      lean:'揺れ: 切片ごとの左右の振り幅。',
+      tone:'音色: ローパスフィルター。下げると籠もった音に。',
+      monitor:'原音: 入力をそのまま混ぜる量。',
+      out:'出力: 全体の音量。'
+    },
+    presets:{beepy:'ピッと砕ける',burning:'燃える影',stutter:'細かい吃音',reverse:'逆行する記憶',breath:'息継ぎ',fog:'霧のトランペット',prayer:'機械の祈り'}
+  },
+  en:{
+    start:'Start mic', pause:'Pause', resume:'Resume',
+    inDevice:'Input device', inDefault:'Input: default mic', inPrefix:'Input: ', unknownDev:'Unnamed device',
+    fileIn:'Audio file', fileInTip:'Use an audio file as the input instead of the mic',
+    freeze:'Freeze', freezeTip:'Stop recording into the buffer and keep slicing what is already there',
+    dice:'Random', diceTip:'Randomize all parameters', preset:'Presets',
+    rec:'Record', recStop:'Stop recording', recDone:'Recorded: ', save:' — save', needStart:'Press “Start mic” first.',
+    sync:'Sync', syncInt:'Internal tempo', syncMidi:'MIDI clock (Ableton Live)', midiPort:'MIDI input port',
+    offset:'Offset', follow:'Mute when Live stops',
+    intRun:'Running on internal tempo', pickPort:'Choose a MIDI input port', waitClock:'Waiting for clock',
+    noMidiIn:'No MIDI inputs found', noWebMidi:'This browser has no Web MIDI. Open the page in Chrome.', midiDenied:'MIDI access was not allowed',
+    idle:'Stopped · Use headphones (speakers will feed back)', paused:'Paused',
+    inputOn:'Input: ', mic:'Mic', fileOn:'File input · ',
+    errOpen:'Could not open the input: ', errOpenHint:' (open the page in Chrome and allow microphone access)', errThis:'Could not open this input: ',
+    lgN:'Normal slice', lgS:'Stuck (repeats the same spot)', lgD:'Disorder (jumps back, reverses)', lgA:'Absence (silence)', lgB:'Beep (pitched tone)',
+    pTime:'TIME', pChange:'CHANGE', pSpace:'SPACE',
+    hint:'Drag knobs up/down (Shift for fine), double-click to reset.',
+    beat:' beat', beats:' beats', bar:'1 bar',
+    k:{length:'Length',stuck:'Stuck',disorder:'Disorder',repeat:'Repeat',rate:'Rate',absence:'Absence',beep:'Beep',pitch:'Pitch',mirage:'Mirage',smooth:'Smooth',lean:'Lean',tone:'Tone',monitor:'Dry',out:'Output'},
+    h:{
+      length:'Length: how long each slice is, in note values at the current BPM. Shorter = finer cuts.',
+      stuck:'Stuck: chance of sticking to the same spot as the previous slice.',
+      disorder:'Disorder: chance of jumping to a random point in the past, reversing, or changing speed.',
+      repeat:'Repeat: chance and density of ratcheting a slice into 2–8 hits.',
+      rate:'Rate: playback speed and pitch (±1 octave). Center = original.',
+      absence:'Absence: chance a slice goes silent, leaving gaps in the rhythm.',
+      beep:'Beep: chance a slice turns into a pitched tone by looping a tiny fragment at audio rate.',
+      pitch:'Pitch: the pitch of the beeps. A lower tone (about 1/3) shows up sometimes.',
+      mirage:'Mirage: how much of the sliced sound melts into a long, foggy reverb.',
+      smooth:'Smooth: fade at the start and end of each slice. Higher = softer edges, lower = clicky.',
+      lean:'Lean: how far each slice is panned left or right.',
+      tone:'Tone: low-pass filter. Turn down for a darker sound.',
+      monitor:'Dry: how much of the unprocessed input is mixed in.',
+      out:'Output: overall volume.'
+    },
+    presets:{beepy:'Beep Shatter',burning:'Burning Shadow',stutter:'Fine Stutter',reverse:'Memory in Reverse',breath:'Breathing',fog:'Trumpet in Fog',prayer:'Machine Prayer'}
+  }
+};
+let LANG = 'en';
+try{ LANG = localStorage.getItem('kudake-lang') || ((navigator.language||'').startsWith('ja') ? 'ja' : 'en'); }catch(e){ LANG = (navigator.language||'').startsWith('ja') ? 'ja' : 'en'; }
+if(!I18N[LANG]) LANG='en';
+const t = k => I18N[LANG][k];
+
+/* ---------- パラメーター定義 ---------- */
+const P = {
+  length:  {g:'g1',name:'長さ',  def:.47, big:true, fmt:v=>{const i=Math.round(v*14);const L=['1/16','1/12','1/8','1/6','3/16','1/4','1/3','3/8','1/2','3/4'];return i<10?L[i]:i===14?t('bar'):[1,1.5,2,3][i-10]+(i===10?t('beat'):t('beats'))}},
+  stuck:   {g:'g1',name:'停滞',  def:.12, fmt:pct},
+  disorder:{g:'g2',name:'撹乱',  def:.35, fmt:pct},
+  repeat:  {g:'g2',name:'反復',  def:.25, fmt:pct},
+  rate:    {g:'g2',name:'速度',  def:.5,  fmt:v=>'×'+Math.pow(2,(v-.5)*2).toFixed(2)},
+  absence: {g:'g2',name:'欠落',  def:.1,  fmt:pct},
+  beep:    {g:'g2',name:'ピッ',  def:.15, fmt:pct},
+  pitch:   {g:'g2',name:'高さ',  def:.88, fmt:v=>Math.round(600*Math.pow(10,v))+' Hz'},
+  mirage:  {g:'g3',name:'残響',  def:.35, big:true, fmt:pct},
+  smooth:  {g:'g3',name:'平滑',  def:.08, fmt:pct},
+  lean:    {g:'g3',name:'揺れ',  def:.35, fmt:pct},
+  tone:    {g:'g3',name:'音色',  def:.8,  fmt:v=>Math.round(toneHz(v))+' Hz'},
+  monitor: {g:'g3',name:'原音',  def:0,   fmt:pct},
+  out:     {g:'g3',name:'出力',  def:.75, fmt:pct},
+};
+function pct(v){return Math.round(v*100)+' %'}
+function toneHz(v){return 200*Math.pow(90,v)}
+const state = {}; Object.keys(P).forEach(k=>state[k]=P[k].def);
+
+const PRESETS = {
+  beepy:    {length:.3,stuck:.25,disorder:.35,repeat:.55,rate:.5,absence:.1,beep:.35,pitch:.88,mirage:.2,smooth:.04,lean:.4,tone:1},
+  burning:  {length:.47,stuck:.12,disorder:.35,repeat:.25,rate:.5,absence:.1,mirage:.35,smooth:.08,lean:.35,tone:.8},
+  stutter:  {length:.15,stuck:.45,disorder:.15,repeat:.7,rate:.5,absence:.05,mirage:.15,smooth:.02,lean:.5,tone:.9},
+  reverse:  {length:.65,stuck:.1,disorder:.8,repeat:.1,rate:.42,absence:.15,mirage:.6,smooth:.35,lean:.6,tone:.6},
+  breath:   {length:.5,stuck:.2,disorder:.2,repeat:.15,rate:.5,absence:.45,mirage:.45,smooth:.2,lean:.2,tone:.7},
+  fog:      {length:.8,stuck:.3,disorder:.4,repeat:.05,rate:.25,absence:.05,mirage:.85,smooth:.6,lean:.4,tone:.5},
+  prayer:   {length:.3,stuck:.6,disorder:.5,repeat:.5,rate:.75,absence:.2,mirage:.25,smooth:.0,lean:.8,tone:1},
+};
+
+/* ---------- ノブUI ---------- */
+const A0=-135, A1=135;
+function polar(cx,cy,r,deg){const a=(deg-90)*Math.PI/180;return [cx+r*Math.cos(a),cy+r*Math.sin(a)]}
+function arcPath(r,a0,a1){const [x0,y0]=polar(50,50,r,a0),[x1,y1]=polar(50,50,r,a1);const large=(a1-a0)>180?1:0;return `M${x0} ${y0}A${r} ${r} 0 ${large} 1 ${x1} ${y1}`}
+const knobEls={};
+Object.entries(P).forEach(([k,d])=>{
+  const el=document.createElement('div');
+  el.className='knob'+(d.big?' big':''); el.tabIndex=0; el.id='k-'+k;
+  el.setAttribute('role','slider');
+  el.innerHTML=`<svg viewBox="0 0 100 100"><path class="track" d="${arcPath(44,A0,A1)}"/><path class="arc"/><circle class="face" cx="50" cy="50" r="34"/><line class="tick" x1="50" y1="50" x2="50" y2="22"/></svg><div class="lbl"></div><div class="val"></div>`;
+  document.getElementById(d.g).appendChild(el);
+  knobEls[k]=el;
+  let sy=0,sv=0,drag=false;
+  el.addEventListener('pointerdown',e=>{drag=true;sy=e.clientY;sv=state[k];el.setPointerCapture(e.pointerId)});
+  el.addEventListener('pointermove',e=>{if(!drag)return;const s=e.shiftKey?600:180;setParam(k,sv+(sy-e.clientY)/s)});
+  el.addEventListener('pointerup',()=>drag=false);
+  el.addEventListener('dblclick',()=>setParam(k,d.def));
+  el.addEventListener('wheel',e=>{e.preventDefault();setParam(k,state[k]-e.deltaY/1500)},{passive:false});
+  el.addEventListener('keydown',e=>{const s=e.shiftKey?.01:.05;if(e.key==='ArrowUp'||e.key==='ArrowRight'){setParam(k,state[k]+s);e.preventDefault()}if(e.key==='ArrowDown'||e.key==='ArrowLeft'){setParam(k,state[k]-s);e.preventDefault()}});
+  el.addEventListener('mouseenter',()=>hint(t('h')[k]));
+  drawKnob(k);
+});
+function drawKnob(k){
+  const el=knobEls[k],v=state[k],a=A0+(A1-A0)*v;
+  el.querySelector('.arc').setAttribute('d',v<0.005?'':arcPath(44,A0,a));
+  el.querySelector('.tick').setAttribute('transform',`rotate(${a} 50 50)`);
+  el.querySelector('.val').textContent=P[k].fmt(v);
+  el.setAttribute('aria-valuenow',Math.round(v*100));
+}
+function setParam(k,v){state[k]=Math.min(1,Math.max(0,v));drawKnob(k);apply(k)}
+function hint(t){document.getElementById('hint').textContent=t}
+
+/* ---------- オーディオグラフ ---------- */
+let ctx,node,inGain,tone,dryWet,wetVerb,verb,monitorG,outG,analyser,recDest,srcNode,mediaStream;
+async function build(){
+  if(ctx) return;
+  ctx=new (window.AudioContext||window.webkitAudioContext)({latencyHint:'interactive'});
+  try{
+    if(!ctx.audioWorklet) throw new Error('no worklet');
+    const url=URL.createObjectURL(new Blob([WORKLET],{type:'application/javascript'}));
+    await ctx.audioWorklet.addModule(url);
+    node=new AudioWorkletNode(ctx,'kudake',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2]});
+  }catch(e){
+    node=fallbackNode(); // ファイルを直接開いた場合など、ワークレットが使えない環境向け
+  }
+  node.port.onmessage=e=>pushSeg(e.data);
+  inGain=ctx.createGain();
+  tone=ctx.createBiquadFilter(); tone.type='lowpass'; tone.Q.value=.7;
+  dryWet=ctx.createGain(); wetVerb=ctx.createGain();
+  verb=ctx.createConvolver(); verb.buffer=impulse(4.5);
+  monitorG=ctx.createGain(); outG=ctx.createGain();
+  analyser=ctx.createAnalyser(); analyser.fftSize=2048;
+  recDest=ctx.createMediaStreamDestination();
+  inGain.connect(node); node.connect(tone);
+  tone.connect(dryWet).connect(outG);
+  tone.connect(wetVerb).connect(verb).connect(outG);
+  inGain.connect(monitorG).connect(outG);
+  outG.connect(analyser); outG.connect(ctx.destination); outG.connect(recDest);
+  Object.keys(state).forEach(apply);
+  node.port.postMessage({bpm:midiBpm||+document.getElementById('bpm').value});
+  updateMute();
+  requestAnimationFrame(draw);
+}
+function fallbackNode(){
+  let Proc;
+  const toMain={onmessage:null};
+  class Base{constructor(){this.port={onmessage:null,postMessage:d=>toMain.onmessage&&toMain.onmessage({data:d})}}}
+  new Function('AudioWorkletProcessor','registerProcessor','sampleRate',WORKLET)(Base,(n,c)=>Proc=c,ctx.sampleRate);
+  const proc=new Proc();
+  const sp=ctx.createScriptProcessor(1024,2,2);
+  sp.onaudioprocess=ev=>{
+    const ib=ev.inputBuffer,ob=ev.outputBuffer;
+    const ins=[ib.getChannelData(0)];if(ib.numberOfChannels>1)ins.push(ib.getChannelData(1));
+    proc.process([ins],[[ob.getChannelData(0),ob.getChannelData(1)]]);
+  };
+  sp.port={postMessage:d=>proc.port.onmessage&&proc.port.onmessage({data:d}),
+    set onmessage(f){toMain.onmessage=f},get onmessage(){return toMain.onmessage}};
+  return sp;
+}
+function impulse(sec){
+  const sr=ctx.sampleRate,len=Math.floor(sr*sec),b=ctx.createBuffer(2,len,sr);
+  for(let c=0;c<2;c++){const d=b.getChannelData(c);for(let i=0;i<len;i++){const t=i/len;d[i]=(Math.random()*2-1)*Math.pow(1-t,2.6)*(t<.01?t*100:1)}}
+  return b;
+}
+function apply(k){
+  if(!ctx) return;
+  const v=state[k],t=ctx.currentTime;
+  if(['length','stuck','disorder','repeat','rate','absence','smooth','lean','beep','pitch'].includes(k)) node.port.postMessage({[k]:v});
+  if(k==='mirage'){dryWet.gain.setTargetAtTime(Math.cos(v*Math.PI/2),t,.05);wetVerb.gain.setTargetAtTime(Math.sin(v*Math.PI/2)*1.3,t,.05)}
+  if(k==='tone') tone.frequency.setTargetAtTime(toneHz(v),t,.05);
+  if(k==='monitor') monitorG.gain.setTargetAtTime(v,t,.05);
+  if(k==='out') outG.gain.setTargetAtTime(v*v*1.4,t,.05);
+}
+function setSource(n){if(srcNode){try{srcNode.stop&&srcNode.stop()}catch(e){};srcNode.disconnect()}srcNode=n;n.connect(inGain)}
+
+const startBtn=document.getElementById('start'), statusEl=document.getElementById('status');
+startBtn.onclick=async()=>{
+  try{
+    if(ctx && ctx.state==='running' && startBtn.classList.contains('running')){await ctx.suspend();startBtn.classList.remove('running');startState='paused';renderStart();setStatus(()=>t('paused'));return}
+    await build(); await ctx.resume();
+    if(!mediaStream) await openInput(); else setStatus(lastInputStatus);
+    setRunning();
+  }catch(err){setStatus(()=>t('errOpen')+err.message+t('errOpenHint'),true)}
+};
+const inDev=document.getElementById('inDev');
+async function openInput(){
+  if(mediaStream) mediaStream.getTracks().forEach(t=>t.stop());
+  const a={echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:{ideal:2}};
+  if(inDev.value) a.deviceId={exact:inDev.value};
+  mediaStream=await navigator.mediaDevices.getUserMedia({audio:a});
+  setSource(ctx.createMediaStreamSource(mediaStream));
+  const label=mediaStream.getAudioTracks()[0].label;
+  lastInputStatus=()=>t('inputOn')+(label||t('mic'))+' · '+Math.round(ctx.sampleRate/100)/10+' kHz';
+  setStatus(lastInputStatus);
+  await listInputs();
+}
+async function listInputs(){
+  const devs=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput');
+  const cur=inDev.value;
+  inDev.innerHTML='';
+  const o0=document.createElement('option');o0.value='';o0.dataset.i18n='inDefault';o0.textContent=t('inDefault');inDev.appendChild(o0);
+  devs.filter(d=>d.deviceId!=='default').forEach(d=>{const o=document.createElement('option');o.value=d.deviceId;o.dataset.label=d.label||'';o.textContent=t('inPrefix')+(d.label||t('unknownDev'));inDev.appendChild(o)});
+  inDev.value=devs.some(d=>d.deviceId===cur)?cur:'';
+}
+inDev.onchange=async()=>{
+  try{await build();await ctx.resume();await openInput();setRunning()}
+  catch(err){setStatus(()=>t('errThis')+err.message,true)}
+};
+navigator.mediaDevices&&navigator.mediaDevices.addEventListener&&navigator.mediaDevices.addEventListener('devicechange',()=>listInputs().catch(()=>{}));
+navigator.mediaDevices&&listInputs().catch(()=>{});
+document.getElementById('fileBtn').onclick=()=>document.getElementById('file').click();
+document.getElementById('file').onchange=async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  await build(); await ctx.resume();
+  const buf=await ctx.decodeAudioData(await f.arrayBuffer());
+  const s=ctx.createBufferSource(); s.buffer=buf; s.loop=true; setSource(s); s.start();
+  if(mediaStream){mediaStream.getTracks().forEach(t=>t.stop());mediaStream=null}
+  setRunning();
+  lastInputStatus=()=>t('fileOn')+f.name; setStatus(lastInputStatus);
+};
+const frzBtn=document.getElementById('freeze');
+frzBtn.onclick=()=>{frzBtn.classList.toggle('on');node&&node.port.postMessage({freeze:frzBtn.classList.contains('on')?1:0})};
+document.getElementById('bpm').onchange=e=>{const v=Math.min(220,Math.max(40,+e.target.value||90));e.target.value=v;node&&node.port.postMessage({bpm:v})};
+document.getElementById('dice').onclick=()=>{['length','stuck','disorder','repeat','rate','absence','beep','pitch','mirage','smooth','lean','tone'].forEach(k=>{let v=Math.random();if(k==='rate')v=[.25,.42,.5,.5,.5,.58,.75][Math.floor(Math.random()*7)];if(k==='tone')v=.45+Math.random()*.55;setParam(k,v)})};
+const presetSel=document.getElementById('preset');
+function renderPresets(){const cur=presetSel.value;presetSel.innerHTML='<option value="">'+t('preset')+'</option>'+Object.keys(PRESETS).map(id=>`<option value="${id}">${t('presets')[id]}</option>`).join('');presetSel.value=cur}
+presetSel.onchange=()=>{const p=PRESETS[presetSel.value];if(p)Object.entries(Object.assign({beep:.1,pitch:.88},p)).forEach(([k,v])=>setParam(k,v))};
+
+/* ---------- MIDIクロック同期 ---------- */
+const syncSel=document.getElementById('syncMode'),midiSel=document.getElementById('midiIn'),
+  syncInfo=document.getElementById('syncInfo'),lamp=document.getElementById('lamp'),
+  bpmIn=document.getElementById('bpm'),offIn=document.getElementById('offset'),followIn=document.getElementById('follow');
+let syncErr=null,midiAccess=null,midiPort=null,clk=0,playing=false,lastClk=0,intervals=[],midiBpm=0,beatNo=0;
+const send=m=>node&&node.port.postMessage(m);
+function lateSamples(ts){
+  if(!ctx) return 0;
+  const procMs=Math.max(0,performance.now()-ts);
+  return (procMs-(+offIn.value||0))/1000*ctx.sampleRate;
+}
+function flash(isBar){lamp.className='lamp '+(isBar?'bar':'hit');setTimeout(()=>lamp.className='lamp',70)}
+function updateMute(){send({mute:(syncSel.value==='midi'&&followIn.checked&&!playing)?1:0})}
+function showSync(){
+  if(syncErr){syncInfo.innerHTML='<span class="err"></span>';syncInfo.firstChild.textContent=t(syncErr);return}
+  if(syncSel.value!=='midi'){syncInfo.textContent=t('intRun');return}
+  if(!midiPort){syncInfo.textContent=t('pickPort');return}
+  const bar=Math.floor(beatNo/4)+1,b=beatNo%4+1;
+  syncInfo.textContent=(playing?'▶ ':'■ ')+(midiBpm?midiBpm.toFixed(2)+' BPM':t('waitClock'))+(playing?` · ${bar}.${b}`:'');
+}
+function onMidi(e){
+  const s=e.data[0];
+  if(s===0xF8){ // クロック（4分音符あたり24回）
+    const ts=e.timeStamp;
+    if(lastClk){const d=ts-lastClk;if(d>2&&d<200){intervals.push(d);if(intervals.length>48)intervals.shift()}}
+    lastClk=ts;
+    if(intervals.length>=12){
+      const avg=intervals.reduce((a,b)=>a+b)/intervals.length;
+      const bpm=Math.round(60000/(avg*24)*100)/100;
+      if(Math.abs(bpm-midiBpm)>0.05){midiBpm=bpm;bpmIn.value=Math.round(bpm);send({bpm})}
+    }
+    if(playing && clk%24===0){beatNo=clk/24;send({beat:1,late:lateSamples(ts)});flash(beatNo%4===0);showSync()}
+    if(playing) clk++;
+  } else if(s===0xFA){ // スタート
+    clk=0;beatNo=0;playing=true;updateMute();showSync();
+  } else if(s===0xFB){ // コンティニュー
+    playing=true;updateMute();showSync();
+  } else if(s===0xFC){ // ストップ
+    playing=false;updateMute();showSync();
+  } else if(s===0xF2){ // ソングポジション（16分音符単位）
+    clk=((e.data[2]<<7)|e.data[1])*6;beatNo=Math.floor(clk/24);showSync();
+  }
+}
+function listPorts(){
+  const ins=[...midiAccess.inputs.values()];
+  const cur=midiSel.value;
+  midiSel.innerHTML=ins.length?ins.map(p=>`<option value="${p.id}">${p.name}</option>`).join(''):'<option value="" data-i18n="noMidiIn">'+t('noMidiIn')+'</option>';
+  const pick=ins.find(p=>p.id===cur)||ins.find(p=>/IAC|Live|Ableton/i.test(p.name))||ins[0];
+  if(pick) midiSel.value=pick.id;
+  connectPort();
+}
+function connectPort(){
+  if(midiPort) midiPort.onmidimessage=null;
+  midiPort=midiAccess&&midiAccess.inputs.get(midiSel.value)||null;
+  intervals=[];lastClk=0;midiBpm=0;
+  if(midiPort) midiPort.onmidimessage=onMidi;
+  showSync();
+}
+syncSel.onchange=async()=>{
+  const midi=syncSel.value==='midi';
+  [midiSel,document.getElementById('offWrap'),document.getElementById('followWrap')].forEach(el=>el.hidden=!midi);
+  bpmIn.disabled=midi;
+  if(midi){
+    syncErr=null;
+    if(!navigator.requestMIDIAccess){syncErr='noWebMidi';showSync();return}
+    try{midiAccess=midiAccess||await navigator.requestMIDIAccess();midiAccess.onstatechange=listPorts;listPorts()}
+    catch(err){syncErr='midiDenied';showSync()}
+  } else {
+    syncErr=null;
+    if(midiPort) midiPort.onmidimessage=null; midiPort=null; playing=false;
+    send({bpm:+bpmIn.value}); showSync();
+  }
+  updateMute();
+};
+midiSel.onchange=connectPort;
+followIn.onchange=updateMute;
+setInterval(()=>{if(syncSel.value==='midi'&&playing&&lastClk&&performance.now()-lastClk>1000){playing=false;updateMute();showSync()}},500);
+
+/* ---------- 録音 ---------- */
+let rec,chunks=[];
+const recBtn=document.getElementById('rec');
+recBtn.onclick=async()=>{
+  if(!ctx){hint(t('needStart'));return}
+  if(rec&&rec.state==='recording'){rec.stop();return}
+  const type=['audio/webm;codecs=opus','audio/mp4','audio/webm'].find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported(t))||'';
+  rec=new MediaRecorder(recDest.stream,type?{mimeType:type}:{});chunks=[];
+  rec.ondataavailable=e=>chunks.push(e.data);
+  rec.onstop=()=>{recBtn.classList.remove('on');renderRec();
+    const blob=new Blob(chunks,{type:rec.mimeType});const ext=rec.mimeType.includes('mp4')?'m4a':'webm';
+    const name='kudake-'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.'+ext;
+    lastRec={url:URL.createObjectURL(blob),name};renderDl()};
+  rec.start();recBtn.classList.add('on');renderRec();
+};
+
+
+/* ---------- 言語の切り替え ---------- */
+let startState='idle', statusFn=()=>t('idle'), statusErr=false, lastInputStatus=()=>t('idle'), lastRec=null;
+function renderStart(){startBtn.textContent=t(startState==='running'?'pause':startState==='paused'?'resume':'start')}
+function setRunning(){startBtn.classList.add('running');startState='running';renderStart()}
+function setStatus(fn,isErr){statusFn=fn;statusErr=!!isErr;renderStatus()}
+function renderStatus(){statusEl.textContent='';if(statusErr){const sp=document.createElement('span');sp.className='err';sp.textContent=statusFn();statusEl.appendChild(sp)}else statusEl.textContent=statusFn()}
+function renderRec(){recBtn.textContent=t(recBtn.classList.contains('on')?'recStop':'rec')}
+function renderDl(){const el=document.getElementById('dl');el.textContent='';if(!lastRec)return;el.append(t('recDone'));const a=document.createElement('a');a.className='dl';a.href=lastRec.url;a.download=lastRec.name;a.textContent=lastRec.name+t('save');el.appendChild(a)}
+function applyLang(){
+  document.documentElement.lang=LANG;
+  document.querySelectorAll('[data-i18n]').forEach(el=>el.textContent=t(el.dataset.i18n));
+  document.querySelectorAll('[data-i18n-title]').forEach(el=>el.title=t(el.dataset.i18nTitle));
+  document.querySelectorAll('[data-i18n-aria]').forEach(el=>el.setAttribute('aria-label',t(el.dataset.i18nAria)));
+  inDev.querySelectorAll('option[data-label]').forEach(o=>o.textContent=t('inPrefix')+(o.dataset.label||t('unknownDev')));
+  Object.keys(P).forEach(k=>{knobEls[k].querySelector('.lbl').textContent=t('k')[k];knobEls[k].setAttribute('aria-label',t('k')[k]);drawKnob(k)});
+  renderPresets(); renderStart(); renderStatus(); renderRec(); renderDl(); showSync(); hint(t('hint'));
+  langBtn.textContent = LANG==='ja' ? 'EN' : '日本語';
+  langBtn.title = LANG==='ja' ? 'Switch to English' : '日本語に切り替え';
+}
+const langBtn=document.getElementById('lang');
+langBtn.onclick=()=>{LANG=LANG==='ja'?'en':'ja';try{localStorage.setItem('kudake-lang',LANG)}catch(e){};applyLang()};
+applyLang();
+
+/* ---------- 表示 ---------- */
+const segs=[]; const COL={n:'#e8e4da',s:'#7fb8b0',d:'#e0a458',a:'#c96f7c',b:'#b6a4ec'};
+function pushSeg(m){segs.push({...m,t:performance.now()});if(segs.length>200)segs.shift()}
+const cv=document.getElementById('scope'),g=cv.getContext('2d');
+const wave=new Float32Array(2048);
+function draw(){
+  requestAnimationFrame(draw);
+  const W=cv.width,H=cv.height; g.clearRect(0,0,W,H);
+  // 切片の帯（右から左へ流れる、6秒分）
+  const now=performance.now(),span=6000,bandY=H-64,bandH=44;
+  for(const s of segs){
+    const x1=W-(now-s.t)/span*W, w=Math.max(3,s.len*1000/span*W);
+    if(x1+w<0) continue;
+    g.fillStyle=COL[s.kind]; g.globalAlpha=s.kind==='a'?.35:.85;
+    const sub=w/s.n;
+    for(let i=0;i<s.n;i++) g.fillRect(x1+i*sub+1,bandY,Math.max(1,sub-3),bandH);
+    if(s.rev){g.globalAlpha=1;g.fillStyle='#141a18';g.beginPath();g.moveTo(x1+10,bandY+bandH/2);g.lineTo(x1+20,bandY+12);g.lineTo(x1+20,bandY+bandH-12);g.fill()}
+  }
+  g.globalAlpha=1;
+  // 出力波形
+  if(analyser){
+    analyser.getFloatTimeDomainData(wave);
+    g.strokeStyle='#e8e4da';g.lineWidth=3;g.beginPath();
+    const mid=(bandY-10)/2+6;
+    for(let i=0;i<wave.length;i++){const x=i/wave.length*W,y=mid+wave[i]*mid*1.6;i?g.lineTo(x,y):g.moveTo(x,y)}
+    g.stroke();
+  }
+}
+</script>
+</body>
+</html>
